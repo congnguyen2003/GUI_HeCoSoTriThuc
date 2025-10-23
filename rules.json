@@ -1,0 +1,77 @@
+[
+  {
+    "id": 1,
+    "antecedent": "a^b^C",
+    "consequent": "c"
+  },
+  {
+    "id": 2,
+    "antecedent": "a^b^ma",
+    "consequent": "c"
+  },
+  {
+    "id": 3,
+    "antecedent": "a^b^mb",
+    "consequent": "c"
+  },
+  {
+    "id": 4,
+    "antecedent": "A^B",
+    "consequent": "C"
+  },
+  {
+    "id": 5,
+    "antecedent": "a^hc",
+    "consequent": "B"
+  },
+  {
+    "id": 6,
+    "antecedent": "b^hc",
+    "consequent": "A"
+  },
+  {
+    "id": 7,
+    "antecedent": "a^R",
+    "consequent": "A"
+  },
+  {
+    "id": 8,
+    "antecedent": "b^R",
+    "consequent": "B"
+  },
+  {
+    "id": 9,
+    "antecedent": "a^b^c",
+    "consequent": "P"
+  },
+  {
+    "id": 10,
+    "antecedent": "a^b^c",
+    "consequent": "p"
+  },
+  {
+    "id": 11,
+    "antecedent": "a^b^c",
+    "consequent": "mc"
+  },
+  {
+    "id": 12,
+    "antecedent": "a^ha",
+    "consequent": "S"
+  },
+  {
+    "id": 13,
+    "antecedent": "a^b^C",
+    "consequent": "S"
+  },
+  {
+    "id": 14,
+    "antecedent": "a^b^c^p",
+    "consequent": "S"
+  },
+  {
+    "id": 15,
+    "antecedent": "b^S",
+    "consequent": "hb"
+  }
+]

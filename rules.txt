@@ -1,0 +1,15 @@
+1	a^b^C->c
+2	a^b^ma->c
+3	a^b^mb->c
+4	A^B->C
+5	a^hc->B
+6	b^hc->A
+7	a^R->A
+8	b^R->B
+9	a^b^c->P
+10	a^b^c->p
+11	a^b^c->mc
+12	a^ha->S
+13	a^b^C->S
+14	a^b^c^p->S
+15	b^S->hb
