@@ -4,6 +4,7 @@ import json
 import os
 from typing import List, Tuple, Set, Dict, Optional
 import re
+import random
 
 # plotting
 import networkx as nx
@@ -184,11 +185,9 @@ def forward_chaining(facts: Set[str], rules: List[Dict], goal: Optional[str] = N
         return (goal in facts), facts, trace
     return (None, facts, trace)
 
-
+#Suy diễn lùi
 def backward_chaining(facts: Set[str], rules: List[Dict], goal: str, verbose: bool = False) -> Tuple[bool, List[str]]:
-    """A simple backward chaining that tries to prove goal by recursively proving premises.
-    Returns (proved, proof_chain)
-    """
+
     known = set(facts)
     visited = set()
 
@@ -223,7 +222,7 @@ def backward_chaining(facts: Set[str], rules: List[Dict], goal: str, verbose: bo
     res = prove(goal)
     return res, proof
 
-
+# ve so do fpg
 def build_fpg_graph(rules: List[Dict], facts: Set[str], goals: Set[str], only_relevant: bool = True) -> nx.DiGraph:
     G = nx.DiGraph()
 
@@ -289,6 +288,119 @@ def draw_graph_matplotlib(G: nx.DiGraph, title: str = 'Graph'):
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
     plt.title(title)
     plt.axis('off')
+    plt.show()
+
+
+def build_rpg_from_rules(rules):
+    """Build RPG from rules list format used in GUI"""
+    G = nx.DiGraph()
+    # Convert rules to the format needed for RPG
+    rpg_rules = {}
+    for r in rules:
+        rid = f"R{r.get('id')}"
+        antecedents = [s.strip() for s in re.split(r'\^|,', str(r.get('antecedent') or '')) if s.strip()]
+        consequent = r.get('consequent', '').strip()
+        rpg_rules[rid] = {"left": antecedents, "right": consequent}
+        G.add_node(rid)
+    
+    # Add edges between rules where one's conclusion is another's premise
+    for ri, info_i in rpg_rules.items():
+        for rj, info_j in rpg_rules.items():
+            if ri != rj and info_i["right"] in info_j["left"]:
+                G.add_edge(ri, rj, label=info_i["right"])
+    return G
+
+
+def find_rpg_groups(rules, facts, goals):
+    """Find R_GT and R_KL rule groups"""
+    R_GT = {f"R{r.get('id')}" for r in rules 
+            if all(p in facts for p in re.split(r'\^|,', str(r.get('antecedent') or '')) if p.strip())}
+    R_KL = {f"R{r.get('id')}" for r in rules 
+            if any(str(r.get('consequent')).strip() == g for g in goals)}
+    return R_GT, R_KL
+
+
+def draw_rpg_enhanced(G, R_GT, R_KL, title="ĐỒ THỊ PHỤ THUỘC GIỮA CÁC LUẬT (RPG)"):
+    plt.close('all')
+    plt.figure().clear()
+    plt.rcParams.update(plt.rcParamsDefault)
+
+    # Spring layout with strong repulsion
+    pos = nx.spring_layout(G, k=2.5, iterations=300, seed=42)
+
+    # Add random offsets to prevent overlap
+    for n in pos:
+        pos[n][0] += random.uniform(-0.4, 0.4)
+        pos[n][1] += random.uniform(-0.4, 0.4)
+
+    # Visual layering
+    for n in G.nodes:
+        if n in R_GT:
+            pos[n][1] += 3.0
+        elif n in R_KL:
+            pos[n][1] -= 3.0
+
+    plt.figure(figsize=(20, 13))
+    ax = plt.gca()
+    ax.set_facecolor("#fdfdfd")
+
+    color_gt = "#FF5722"   # orange
+    color_kl = "#4CAF50"   # green
+    color_mid = "#2196F3"  # blue
+
+    node_colors = []
+    for n in G.nodes:
+        if n in R_GT:
+            node_colors.append(color_gt)
+        elif n in R_KL:
+            node_colors.append(color_kl)
+        else:
+            node_colors.append(color_mid)
+
+    # Draw nodes
+    nx.draw_networkx_nodes(
+        G, pos,
+        node_color=node_colors,
+        node_size=2600,
+        node_shape='o',
+        edgecolors='black',
+        linewidths=1.5,
+        alpha=0.95
+    )
+
+    nx.draw_networkx_labels(G, pos, font_size=11, font_weight='bold', font_color='white')
+
+    # Draw edges
+    nx.draw_networkx_edges(
+        G, pos,
+        arrows=True,
+        arrowsize=28,
+        width=2.2,
+        edge_color='#444',
+        connectionstyle="arc3,rad=0.18",
+        alpha=0.9
+    )
+
+    # Edge labels
+    edge_labels = {(u, v): d['label'] for u, v, d in G.edges(data=True)}
+    nx.draw_networkx_edge_labels(
+        G, pos,
+        edge_labels=edge_labels,
+        font_color='#004D40',
+        font_size=9,
+        bbox={"facecolor": "#E0F2F1", "alpha": 0.8, "edgecolor": "none", "boxstyle": "round,pad=0.5"}
+    )
+
+    # Title and legend
+    plt.title(title, fontsize=20, fontweight='bold', color='#0D47A1', pad=25)
+
+    legend_y = max(p[1] for p in pos.values()) + 1.5
+    plt.text(-5, legend_y, "🟠 R_GT (từ GT)", fontsize=12, color=color_gt, weight="bold")
+    plt.text(-2, legend_y, "🟢 R_KL (đến KL)", fontsize=12, color=color_kl, weight="bold")
+    plt.text(1, legend_y, "🔵 Trung gian", fontsize=12, color=color_mid, weight="bold")
+
+    plt.axis('off')
+    plt.tight_layout()
     plt.show()
 
 
@@ -459,19 +571,22 @@ class App(tk.Tk):
         if not rules:
             messagebox.showinfo('RPG', 'Không có luật để vẽ')
             return
-        # build RPG same as in handle_inference
-        Gr = nx.DiGraph()
-        for r in rules:
-            Gr.add_node(f"R{r.get('id')}")
-        for a in rules:
-            a_id = a.get('id')
-            a_cons = {s.strip() for s in str(a.get('consequent') or '').split(',') if s.strip()}
-            for b in rules:
-                b_id = b.get('id')
-                b_ants = {s.strip() for s in str(b.get('antecedent') or '').split(',') if s.strip()}
-                if a_cons & b_ants:
-                    Gr.add_edge(f"R{a_id}", f"R{b_id}", rule_pair=f"R{a_id}->R{b_id}")
-        draw_graph_matplotlib(Gr, title='RPG')
+
+        # Get facts and goals from user
+        facts_str = simpledialog.askstring('RPG - Facts', 'Nhập facts (các sự kiện đã biết), cách nhau bằng dấu phẩy:')
+        goals_str = simpledialog.askstring('RPG - Goals', 'Nhập goals (các kết luận cần chứng minh), cách nhau bằng dấu phẩy:')
+        
+        facts = {s.strip() for s in (facts_str or '').split(',') if s.strip()}
+        goals = {s.strip() for s in (goals_str or '').split(',') if s.strip()}
+
+        if not facts and not goals:
+            messagebox.showinfo('RPG', 'Cần nhập ít nhất facts hoặc goals để vẽ RPG có ý nghĩa')
+            return
+
+        # Build and draw the RPG with enhanced visualization
+        G = build_rpg_from_rules(rules)
+        R_GT, R_KL = find_rpg_groups(rules, facts, goals)
+        draw_rpg_enhanced(G, R_GT, R_KL)
 
     # --- rule CRUD ---
     def _open_rule_editor(self, title: str, rule: dict = None):

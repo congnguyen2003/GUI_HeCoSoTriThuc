@@ -134,7 +134,7 @@ if __name__ == "__main__":
 
     # Vẽ đồ thị FPG
     plt.figure(figsize=(7, 5))
-    pos = nx.spring_layout(G, seed=42)
+    pos = nx.shell_layout(G)
     nx.draw(G, pos, with_labels=True, node_color="lightgreen", node_size=1600, font_size=11)
     edge_labels = nx.get_edge_attributes(G, "rule")
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color="blue")
