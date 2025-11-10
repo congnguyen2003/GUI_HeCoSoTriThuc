@@ -14,3 +14,5 @@
 14	a^b^c^p->S
 15	b^S->hb
 16	S^p->r
+GT = a, b, c
+KL = r
