@@ -1,5 +1,0 @@
-pip install flask flask-cors
-
-python -m http.server 8000
-
-python app.py
