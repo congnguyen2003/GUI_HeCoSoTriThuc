@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-HỆ THỐNG SUY DIỄN TRI THỨC
-Tích hợp: Quản lý luật, Vẽ đồ thị FPG/RPG, Suy diễn Tiến/Lùi
-"""
-
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import networkx as nx
@@ -205,10 +199,39 @@ class InferenceSystem:
             messagebox.showwarning("Cảnh báo", f"Không tìm thấy luật {idx}!")
             return
         
+        # Xóa luật
         del self.rules[idx]
+        
+        # Tái đánh số thứ tự các luật
+        try:
+            # Chuyển số thứ tự hiện tại sang dạng số để sắp xếp
+            numeric_keys = []
+            non_numeric_keys = []
+            
+            for key in self.rules.keys():
+                if key.isdigit():
+                    numeric_keys.append(int(key))
+                else:
+                    non_numeric_keys.append(key)
+            
+            numeric_keys.sort()
+            
+            # Tạo dict mới với số thứ tự liên tiếp
+            new_rules = {}
+            for new_idx, old_idx in enumerate(numeric_keys, 1):
+                new_rules[str(new_idx)] = self.rules[str(old_idx)]
+            
+            # Thêm lại những luật không phải số
+            for key in non_numeric_keys:
+                new_rules[key] = self.rules[key]
+            
+            self.rules = new_rules
+        except:
+            pass
+        
         self.save_to_file()
         self.display_rules()
-        messagebox.showinfo("Thành công", f"Đã xóa luật {idx}")
+        messagebox.showinfo("Thành công", f"Đã xóa luật {idx} và cập nhật lại số thứ tự")
     
     def update_gt_kl(self):
         gt_str = self.gt_entry.get().strip()
@@ -348,23 +371,73 @@ class InferenceSystem:
         canvas = FigureCanvasTkAgg(fig, self.rpg_canvas_frame)
         canvas.draw()
         canvas.get_tk_widget().pack(fill='both', expand=True)
+
+    # ============ FPG/RPG HELPERS ============
+    def build_fpg(self, rules):
+        """Xây dựng đồ thị FPG (Facts Precedence Graph) từ dict luật.
+        rules: dict mapping idx -> (premises_set, conclusion)
+        """
+        G = nx.DiGraph()
+        for idx, (premises, conclusion) in rules.items():
+            for p in premises:
+                G.add_edge(p, conclusion, rule=f"r{idx}")
+        return G
+
+    def build_rpg(self, rules):
+        """Xây dựng đồ thị RPG (Rules Precedence Graph) từ dict luật.
+        rules: dict mapping idx -> (premises_set, conclusion)
+        """
+        G = nx.DiGraph()
+        for idx1, (prem1, concl1) in rules.items():
+            for idx2, (prem2, concl2) in rules.items():
+                if idx1 != idx2 and concl1 in prem2:
+                    G.add_edge(idx1, idx2)
+        return G
+
+    def d_fpg(self, G, start, end):
+        try:
+            return nx.shortest_path_length(G, start, end)
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            return float('inf')
+
+    def heuristic_fpg(self, G, premises, goal):
+        """Tính h(r,GT) = max{d(f, goal) | f in premises} (the smaller the better).
+        Nếu mọi d là inf thì trả về inf.
+        """
+        if not premises or not goal:
+            return float('inf')
+        vals = []
+        for f in premises:
+            vals.append(self.d_fpg(G, f, goal))
+        return max(vals) if vals else float('inf')
+
+    def heuristic_rpg(self, G, rule_idx):
+        """Tính h(r) = số lượng luật phụ thuộc vào r trong RPG.
+        Luật càng ít ảnh hưởng đến luật khác thì càng tốt (nhỏ).
+        """
+        try:
+            return len(nx.descendants(G, rule_idx))
+        except:
+            return 0
     
     # ============ TAB 4: SUY DIỄN TIẾN ============
     def create_forward_tab(self):
         control_frame = ttk.LabelFrame(self.tab_forward, text="Tùy chọn", padding=10)
         control_frame.pack(side='top', fill='x', padx=5, pady=5)
         
-        ttk.Label(control_frame, text="Chỉ số:").grid(row=0, column=0, padx=5)
-        self.fwd_index_var = tk.StringVar(value="min")
-        ttk.Radiobutton(control_frame, text="Min", variable=self.fwd_index_var, value="min").grid(row=0, column=1)
-        ttk.Radiobutton(control_frame, text="Max", variable=self.fwd_index_var, value="max").grid(row=0, column=2)
+        ttk.Label(control_frame, text="Chiến lược:").grid(row=0, column=0, padx=5)
+        self.fwd_strategy_var = tk.StringVar(value="min")
+        ttk.Radiobutton(control_frame, text="Min", variable=self.fwd_strategy_var, value="min").grid(row=0, column=1)
+        ttk.Radiobutton(control_frame, text="Max", variable=self.fwd_strategy_var, value="max").grid(row=0, column=2)
+        ttk.Radiobutton(control_frame, text="FPG", variable=self.fwd_strategy_var, value="fpg").grid(row=0, column=3)
+        ttk.Radiobutton(control_frame, text="RPG", variable=self.fwd_strategy_var, value="rpg").grid(row=0, column=4)
         
         ttk.Label(control_frame, text="Tập THOA:").grid(row=1, column=0, padx=5)
         self.fwd_agenda_var = tk.StringVar(value="queue")
         ttk.Radiobutton(control_frame, text="Queue (FIFO)", variable=self.fwd_agenda_var, value="queue").grid(row=1, column=1)
         ttk.Radiobutton(control_frame, text="Stack (LIFO)", variable=self.fwd_agenda_var, value="stack").grid(row=1, column=2)
         
-        ttk.Button(control_frame, text="Thực hiện Suy diễn Tiến", command=self.run_forward).grid(row=2, column=0, columnspan=3, pady=10)
+        ttk.Button(control_frame, text="Thực hiện Suy diễn Tiến", command=self.run_forward).grid(row=2, column=0, columnspan=5, pady=10)
         
         self.fwd_result = scrolledtext.ScrolledText(self.tab_forward, height=30)
         self.fwd_result.pack(fill='both', expand=True, padx=5, pady=5)
@@ -378,20 +451,27 @@ class InferenceSystem:
             return
         
         facts = set(self.GT)
-        rule_select = self.fwd_index_var.get()
+        strategy = self.fwd_strategy_var.get()
         agenda_type = self.fwd_agenda_var.get()
         
-        # Chuyển đổi rules sang format phù hợp
-        rules_list = []
-        for idx, rule in sorted(self.rules.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0):
+        # Chuyển đổi rules sang format dict
+        rules_dict = {}
+        for idx, rule in self.rules.items():
             left_items = re.split(r'\^', rule['left'])
             premises = set([i.strip() for i in left_items if i.strip()])
-            conclusion = rule['right']
-            rules_list.append((premises, conclusion, idx))
+            rules_dict[idx] = (premises, rule['right'])
+        
+        # Xây dựng đồ thị FPG/RPG nếu cần
+        G_fpg = None
+        G_rpg = None
+        if strategy == 'fpg':
+            G_fpg = self.build_fpg(rules_dict)
+        elif strategy == 'rpg':
+            G_rpg = self.build_rpg(rules_dict)
         
         self.fwd_result.insert(tk.END, f"=== SUY DIỄN TIẾN ===\n")
         self.fwd_result.insert(tk.END, f"GT ban đầu: {facts}\n")
-        self.fwd_result.insert(tk.END, f"Chỉ số: {rule_select.upper()}\n")
+        self.fwd_result.insert(tk.END, f"Chiến lược: {strategy.upper()}\n")
         self.fwd_result.insert(tk.END, f"Tập THOA: {agenda_type.upper()}\n\n")
         
         # Khởi tạo agenda
@@ -405,39 +485,62 @@ class InferenceSystem:
             pop = container.pop
         
         # Tìm luật khả dụng ban đầu
-        for i, (prem, concl, idx) in enumerate(rules_list):
+        available_rules = []
+        for idx, (prem, concl) in rules_dict.items():
             if prem.issubset(facts) and concl not in facts:
-                push(i)
+                available_rules.append(idx)
+        
+        for idx in available_rules:
+            push(idx)
         
         step = 1
         while container:
-            # Chọn luật
-            if rule_select in ('min', 'max'):
+            # Chọn luật theo chiến lược
+            if strategy == 'min':
                 indices = list(container)
-                if rule_select == 'min':
-                    chosen = min(indices)
-                else:
-                    chosen = max(indices)
+                chosen = min(indices, key=lambda x: int(x) if str(x).isdigit() else 0)
                 container.remove(chosen)
+            elif strategy == 'max':
+                indices = list(container)
+                chosen = max(indices, key=lambda x: int(x) if str(x).isdigit() else 0)
+                container.remove(chosen)
+            elif strategy == 'fpg':
+                indices = list(container)
+                h_values = {}
+                for idx in indices:
+                    premises, conclusion = rules_dict[idx]
+                    h_values[idx] = self.heuristic_fpg(G_fpg, premises, conclusion)
+                chosen = min(indices, key=lambda x: h_values.get(x, float('inf')))
+                container.remove(chosen)
+                self.fwd_result.insert(tk.END, f"  → h values: {h_values}\n")
+            elif strategy == 'rpg':
+                indices = list(container)
+                h_values = {}
+                for idx in indices:
+                    h_values[idx] = self.heuristic_rpg(G_rpg, idx)
+                chosen = min(indices, key=lambda x: h_values.get(x, float('inf')))
+                container.remove(chosen)
+                self.fwd_result.insert(tk.END, f"  → h(r) values: {h_values}\n")
             else:
                 chosen = pop()
             
-            premises, conclusion, rule_idx = rules_list[chosen]
+            premises, conclusion = rules_dict[chosen]
             
             if premises.issubset(facts) and conclusion not in facts:
                 facts.add(conclusion)
-                self.fwd_result.insert(tk.END, f"Bước {step}: Áp dụng luật r{rule_idx} ({premises} -> {conclusion}) → Suy ra: {conclusion}\n")
-                self.fwd_result.insert(tk.END, f"   Tập facts mới: {facts}\n")
+                self.fwd_result.insert(tk.END, f"Bước {step}: Áp dụng luật r{chosen} ({premises} → {conclusion})\n")
+                self.fwd_result.insert(tk.END, f"   Suy ra: {conclusion}\n")
+                self.fwd_result.insert(tk.END, f"   Tập facts mới: {facts}\n\n")
                 step += 1
                 
                 # Kiểm tra KL
                 if self.KL and conclusion in self.KL:
-                    self.fwd_result.insert(tk.END, f"\n🎯 Đã đạt được kết luận: {conclusion}\n")
+                    self.fwd_result.insert(tk.END, f"🎯 Đã đạt được kết luận: {conclusion}\n\n")
                 
                 # Thêm luật mới khả dụng
-                for i, (prem, concl, idx) in enumerate(rules_list):
-                    if prem.issubset(facts) and concl not in facts and i not in container:
-                        push(i)
+                for idx, (prem, concl) in rules_dict.items():
+                    if prem.issubset(facts) and concl not in facts and idx not in container:
+                        push(idx)
         
         self.fwd_result.insert(tk.END, f"\n✅ Tập fact cuối cùng: {facts}\n")
         
@@ -453,10 +556,11 @@ class InferenceSystem:
         control_frame = ttk.LabelFrame(self.tab_backward, text="Tùy chọn", padding=10)
         control_frame.pack(side='top', fill='x', padx=5, pady=5)
         
-        ttk.Label(control_frame, text="Chỉ số:").grid(row=0, column=0, padx=5)
-        self.bwd_index_var = tk.StringVar(value="min")
-        ttk.Radiobutton(control_frame, text="Min", variable=self.bwd_index_var, value="min").grid(row=0, column=1)
-        ttk.Radiobutton(control_frame, text="Max", variable=self.bwd_index_var, value="max").grid(row=0, column=2)
+        ttk.Label(control_frame, text="Chiến lược:").grid(row=0, column=0, padx=5)
+        self.bwd_strategy_var = tk.StringVar(value="min")
+        ttk.Radiobutton(control_frame, text="Min", variable=self.bwd_strategy_var, value="min").grid(row=0, column=1)
+        ttk.Radiobutton(control_frame, text="Max", variable=self.bwd_strategy_var, value="max").grid(row=0, column=2)
+        ttk.Radiobutton(control_frame, text="FPG", variable=self.bwd_strategy_var, value="fpg").grid(row=0, column=3)
         
         ttk.Label(control_frame, text="Mục tiêu:").grid(row=1, column=0, padx=5)
         self.bwd_goal_entry = ttk.Entry(control_frame, width=20)
@@ -484,7 +588,7 @@ class InferenceSystem:
             return
         
         known = set(self.GT)
-        strategy = self.bwd_index_var.get()
+        strategy = self.bwd_strategy_var.get()
         
         # Chuyển đổi rules
         rules_dict = {}
@@ -493,19 +597,25 @@ class InferenceSystem:
             premises = set([i.strip() for i in left_items if i.strip()])
             rules_dict[idx] = (premises, rule['right'])
         
+        # Xây dựng đồ thị FPG nếu cần
+        G = None
+        if strategy == 'fpg':
+            G = self.build_fpg(rules_dict)
+            self.bwd_result.insert(tk.END, "→ Xây dựng đồ thị FPG...\n")
+        
         self.bwd_result.insert(tk.END, f"=== SUY DIỄN LÙI ===\n")
         self.bwd_result.insert(tk.END, f"GT ban đầu: {known}\n")
         self.bwd_result.insert(tk.END, f"Mục tiêu: {goal}\n")
-        self.bwd_result.insert(tk.END, f"Chỉ số: {strategy.upper()}\n\n")
+        self.bwd_result.insert(tk.END, f"Chiến lược: {strategy.upper()}\n\n")
         
-        result = self.backward_chain(goal, known, rules_dict, strategy, 0, set())
+        result = self.backward_chain(goal, known, rules_dict, strategy, 0, set(), G)
         
         if result:
             self.bwd_result.insert(tk.END, f"\n✅ THÀNH CÔNG: Đã chứng minh được {goal}\n")
         else:
             self.bwd_result.insert(tk.END, f"\n❌ THẤT BẠI: Không thể chứng minh {goal}\n")
     
-    def backward_chain(self, goal, known, rules, strategy, depth, used):
+    def backward_chain(self, goal, known, rules, strategy, depth, used, G=None):
         """Thuật toán suy diễn lùi"""
         indent = "  " * depth
         
@@ -524,9 +634,20 @@ class InferenceSystem:
         
         # Sắp xếp các luật áp dụng được theo chiến lược
         if strategy == 'min':
-            sorted_rules = sorted(applicable, key=lambda x: int(x) if x.isdigit() else 0)
+            sorted_rules = sorted(applicable, key=lambda x: int(x) if str(x).isdigit() else 0)
+        elif strategy == 'max':
+            sorted_rules = sorted(applicable, key=lambda x: int(x) if str(x).isdigit() else 0, reverse=True)
+        elif strategy == 'fpg' and G is not None:
+            # Tính h(r,GT) cho từng luật và sắp xếp theo h tăng dần
+            h_values = {}
+            for r in applicable:
+                premises = rules[r][0]
+                h_values[r] = self.heuristic_fpg(G, premises, goal)
+            
+            self.bwd_result.insert(tk.END, f"{indent}→ h(r,GT) values: {h_values}\n")
+            sorted_rules = sorted(applicable, key=lambda r: h_values.get(r, float('inf')))
         else:
-            sorted_rules = sorted(applicable, key=lambda x: int(x) if x.isdigit() else 0, reverse=True)
+            sorted_rules = sorted(applicable, key=lambda x: int(x) if str(x).isdigit() else 0)
         
         # Thử từng luật một (Backtracking)
         for r_chosen in sorted_rules:
@@ -540,19 +661,18 @@ class InferenceSystem:
             
             all_proven = True
             for p in premises:
-                if not self.backward_chain(p, known, rules, strategy, depth + 1, new_used):
+                if not self.backward_chain(p, known, rules, strategy, depth + 1, new_used, G):
                     all_proven = False
                     self.bwd_result.insert(tk.END, f"{indent}    ✗ Thất bại khi chứng minh tiền đề {p} của r{r_chosen}\n")
-                    break # Dừng kiểm tra các tiền đề khác của luật này
+                    break
             
             if all_proven:
                 self.bwd_result.insert(tk.END, f"{indent}  ✓ Chứng minh thành công {goal} bằng r{r_chosen}\n")
-                known.add(goal) # Thêm vào tập known để các nhánh khác có thể dùng
-                return True # Đã chứng minh được, không cần thử luật khác
+                known.add(goal)
+                return True
             else:
                 self.bwd_result.insert(tk.END, f"{indent}  ✗ Quay lui từ r{r_chosen}\n")
-                
-        # Nếu đã thử hết các luật mà không luật nào thành công
+        
         self.bwd_result.insert(tk.END, f"{indent}✗ Đã thử hết luật, không chứng minh được {goal}\n")
         return False
 
